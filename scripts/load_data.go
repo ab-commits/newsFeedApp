@@ -4,14 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
 	"path/filepath"
 
 	"newsApp/internal/db"
 	"newsApp/internal/models"
-
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 func main() {
@@ -27,31 +25,28 @@ func main() {
 		return
 	}
 	ctx := context.Background()
-	fmt.Println(len(files))
 	for _, file := range files {
-		data, _ := ioutil.ReadFile(file)
-		fmt.Println(string(data))
-		var articles []models.Article
-		json.Unmarshal(data, &articles)
-
-		for _, article := range articles {
-			_, err := collection.InsertOne(ctx, bson.M{
-				"id":               article.ID,
-				"title":            article.Title,
-				"description":      article.Description,
-				"url":              article.URL,
-				"publication_date": article.PublicationDate,
-				"source_name":      article.SourceName,
-				"category":         article.Category,
-				"relevance_score":  article.RelevanceScore,
-				"latitude":         article.Latitude,
-				"longitude":        article.Longitude,
-			})
-			if err != nil {
-				log.Println("Insert error:", err)
-			}
+		data, err := os.ReadFile(file)
+		if err != nil {
+			log.Fatal(err)
 		}
-		fmt.Println("Loaded file:", file)
+
+		var articles []models.Article
+		if err := json.Unmarshal(data, &articles); err != nil {
+			log.Fatal("JSON parse error:", err)
+		}
+
+		docs := make([]interface{}, 0, len(articles))
+		for _, article := range articles {
+			docs = append(docs, article)
+		}
+
+		if len(docs) > 0 {
+			res, err := collection.InsertMany(ctx, docs)
+			if err != nil {
+				log.Fatal("InsertMany failed:", err)
+			}
+			log.Printf("Inserted %d documents from %s\n", len(res.InsertedIDs), file)
+		}
 	}
-	fmt.Println("All files loaded")
 }
